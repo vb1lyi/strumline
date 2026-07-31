@@ -1,0 +1,777 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rhythm Trainer</title>
+<style>
+  :root{
+    --bg:#0a0c0b;
+    --panel:#121615;
+    --panel-2:#191f1d;
+    --edge:#28302d;
+    --edge-soft:#1e2523;
+    --dim-green:#1f5f38;
+    --lit-green:#5ff08a;
+    --dash:#3d4643;
+    --amber:#ffb454;
+    --amber-dim:#7a5320;
+    --active-edge:#efece2;
+    --text:#e9e7e1;
+    --muted:#7f8b84;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{min-height:100vh;
+    background:
+      radial-gradient(120% 80% at 50% -10%, #10201a 0%, transparent 55%),
+      var(--bg);
+    color:var(--text);
+    font-family:var(--sans);
+    -webkit-font-smoothing:antialiased;
+    padding:22px 16px 64px;
+    line-height:1.4;
+  }
+  .wrap{max-width:900px;margin:0 auto}
+
+  header{display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px}
+  h1{
+    font-size:15px;font-weight:600;letter-spacing:.28em;text-transform:uppercase;
+    margin:0;color:var(--text);
+  }
+  h1 .dot{color:var(--lit-green);text-shadow:0 0 10px var(--lit-green)}
+  .sig{font-family:var(--mono);font-size:12px;color:var(--muted);letter-spacing:.15em}
+
+  /* transport panel */
+  .console{
+    background:linear-gradient(180deg,var(--panel-2),var(--panel));
+    border:1px solid var(--edge);
+    border-radius:14px;
+    padding:18px 18px 16px;
+    box-shadow:inset 0 1px 0 #ffffff08, 0 12px 30px #00000055;
+    margin-bottom:20px;
+  }
+  .row{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+  .row + .row{margin-top:16px}
+
+  /* BPM readout */
+  .bpm-block{display:flex;align-items:center;gap:14px;flex:1;min-width:260px}
+  .bpm-read{
+    font-family:var(--mono);font-size:52px;font-weight:600;line-height:.9;
+    color:var(--amber);text-shadow:0 0 16px #ffb45433;letter-spacing:.02em;
+    min-width:120px;text-align:right;font-variant-numeric:tabular-nums;
+  }
+  .bpm-read small{display:block;font-size:11px;letter-spacing:.25em;color:var(--muted);
+    text-shadow:none;text-align:right;margin-top:6px}
+  .bpm-slider{flex:1;min-width:120px}
+  input[type=range]{
+    -webkit-appearance:none;appearance:none;width:100%;height:4px;border-radius:4px;
+    background:var(--edge);outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:18px;height:18px;border-radius:50%;
+    background:var(--amber);cursor:pointer;box-shadow:0 0 10px #ffb45455;border:none;
+  }
+  input[type=range]::-moz-range-thumb{width:18px;height:18px;border:none;border-radius:50%;
+    background:var(--amber);cursor:pointer;box-shadow:0 0 10px #ffb45455}
+
+  /* buttons */
+  button{
+    font-family:var(--sans);font-size:13px;color:var(--text);cursor:pointer;
+    background:var(--panel-2);border:1px solid var(--edge);border-radius:9px;
+    padding:9px 14px;transition:background .12s,border-color .12s,color .12s;
+    user-select:none;
+  }
+  button:hover{border-color:#3a443f;background:#20272400 linear-gradient(#20272400,#20272400)}
+  button:hover{background:#222a27}
+  button:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+  button.on{color:var(--lit-green);border-color:#2c6b45;background:#132a1f}
+  button.transport{
+    font-family:var(--mono);font-size:15px;letter-spacing:.12em;font-weight:600;
+    padding:14px 26px;border-radius:11px;min-width:130px;text-transform:uppercase;
+    background:linear-gradient(180deg,#1b3b2a,#123021);border-color:#2f6b48;color:var(--lit-green);
+  }
+  button.transport.playing{
+    background:linear-gradient(180deg,#3a1414,#2a0e0e);border-color:#7a3030;color:#ff8a8a;
+  }
+  .seg{display:inline-flex;border:1px solid var(--edge);border-radius:9px;overflow:hidden}
+  .seg button{border:none;border-radius:0;background:transparent}
+  .seg button + button{border-left:1px solid var(--edge)}
+  .seg button.sel{background:#132a1f;color:var(--lit-green)}
+  .ctl-label{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-right:2px}
+
+  /* beat lights */
+  .beats{display:flex;gap:10px;align-items:center}
+  .beat{
+    width:16px;height:16px;border-radius:50%;background:#161c1a;border:1px solid var(--edge-soft);
+    transition:background .05s,box-shadow .05s;
+  }
+  .beat.lit{background:var(--amber-dim);box-shadow:0 0 8px #ffb4544d}
+  .beat.lit.accent{background:var(--amber);box-shadow:0 0 14px #ffb454aa}
+
+  .vol{display:flex;align-items:center;gap:8px;min-width:150px}
+  .vol input{width:90px}
+
+  /* grid of bars */
+  .status{font-family:var(--mono);font-size:11px;letter-spacing:.15em;color:var(--muted);
+    text-transform:uppercase;margin:0 2px 10px}
+  .grid{
+    display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;
+    transition:opacity .2s;
+    margin-bottom:48px;
+  }
+  .grid.counting{opacity:.35}
+  .box{
+    background:#0e1211;border:1.5px solid var(--edge-soft);border-radius:12px;
+    padding:16px 14px;display:flex;align-items:center;justify-content:center;gap:0;
+    aspect-ratio:16/9;position:relative;transition:border-color .1s,box-shadow .1s,transform .1s;
+  }
+  .box.multi-row{flex-direction:column;gap:8px;padding:12px 14px}
+  .box.active-bar{border-color:var(--active-edge);box-shadow:0 0 0 1px var(--active-edge),0 0 22px #efece21f}
+  .grid.focus .box.dim{opacity:.18;pointer-events:none}
+  .grid.focus .box.active-bar{opacity:1;pointer-events:auto}
+
+  .loop-block{display:flex;align-items:center;gap:6px}
+  .grid.loop-edit .box{cursor:pointer}
+  .box.loop-out{opacity:.3}
+  .box.loop-in{border-color:var(--dim-green)}
+  .box.loop-in::after{content:'✓';position:absolute;top:5px;right:7px;font-size:12px;
+    color:var(--lit-green);line-height:1;text-shadow:0 0 8px var(--lit-green)}
+
+  .swing-block{display:flex;align-items:center;gap:8px;min-width:120px}
+  .swing-block input{width:60px}
+  .swing-pct{font-family:var(--mono);font-size:13px;color:var(--muted);
+    min-width:30px;text-align:right;font-variant-numeric:tabular-nums}
+
+  /* chord panel */
+  .chord-panel{display:none;margin-top:14px;padding:14px 16px;
+    background:var(--panel);border:1px solid var(--edge);border-radius:12px}
+  .chord-panel.open{display:block}
+  .chord-grid{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+  .chord-grid button{min-width:38px;text-align:center;padding:7px 10px;font-size:12px;
+    font-family:var(--mono);letter-spacing:.04em}
+  .chord-grid button.sel{background:var(--dim-green);color:var(--lit-green);border-color:var(--lit-green)}
+  .chord-bar-inp{width:44px;font-family:var(--mono);font-size:13px;text-align:center;
+    background:var(--panel-2);border:1px solid var(--edge);border-radius:6px;
+    color:var(--text);padding:4px}
+  .chord-bar-inp:focus{outline:1px solid var(--amber)}
+  .progression-feel{font-family:var(--mono);font-size:11px;color:var(--muted);
+    letter-spacing:.18em;text-transform:uppercase;text-align:center;
+    min-height:18px;margin-bottom:6px}
+
+  .chord-display{display:none;text-align:center;padding:20px 0 12px;
+    font-family:var(--mono);font-size:52px;color:var(--amber);
+    text-shadow:0 0 40px #ffb45455;letter-spacing:.12em;font-weight:700}
+  .chord-display.show{display:block}
+  .track{display:flex;align-items:center;width:100%;justify-content:space-between}
+  .cell{display:flex;align-items:center;flex:1}
+  .cell:last-child{flex:0}
+  .slot{
+    width:18px;height:18px;border-radius:50%;flex:0 0 auto;cursor:pointer;position:relative;
+    background:transparent;transition:transform .06s;
+  }
+  .slot.on{background:var(--dim-green);box-shadow:0 0 0 1px #ffffff08}
+  .box.active-bar .slot.on{background:#2c7d4c}
+  .slot.now.on{background:var(--lit-green);box-shadow:0 0 14px var(--lit-green);transform:scale(1.18)}
+  .slot.now:not(.on){transform:scale(1.1)}
+  .link{flex:1;height:2px;background:var(--dash);border-radius:2px;margin:0 5px;opacity:.6}
+  .slot.rest-dash{width:18px;height:2px;border-radius:2px;background:var(--dash)}
+  .slot.rest-dash.now{background:#5a6560}
+
+  .hint{color:var(--muted);font-size:12.5px;margin-top:18px;line-height:1.6}
+  .hint code{font-family:var(--mono);color:#9fb0a8;background:#141a18;padding:1px 6px;border-radius:5px}
+
+  @media (max-width:520px){
+    .bpm-read{font-size:42px}
+    .grid{grid-template-columns:repeat(auto-fill,minmax(130px,1fr))}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .slot,.beat,.box{transition:none}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Rhythm&nbsp;Trainer</h1>
+    <div class="sig">STRUM = LIT &nbsp;·&nbsp; DASH = SKIP</div>
+  </header>
+
+  <div class="console">
+    <div class="row">
+      <div class="bpm-block">
+        <div class="bpm-read"><span id="bpmVal">100</span><small>BPM</small></div>
+        <input class="bpm-slider" id="bpm" type="range" min="40" max="240" value="100" aria-label="Tempo in BPM">
+        <button id="bpmDec" aria-label="Decrease tempo by 1 BPM">−</button>
+        <button id="bpmInc" aria-label="Increase tempo by 1 BPM">+</button>
+      </div>
+      <button id="tap">Tap tempo</button>
+      <div class="beats" id="beats" aria-hidden="true"></div>
+    </div>
+
+    <div class="row">
+      <button id="play" class="transport">Play</button>
+
+      <div class="seg" id="timeSig">
+        <button data-sig="4" class="sel">4/4</button>
+        <button data-sig="3">3/4</button>
+      </div>
+      <span class="ctl-label">Grid</span>
+      <div class="seg" id="subdiv">
+        <button data-spb="4" class="sel">♩ ×4</button>
+        <button data-spb="8">♪ ×8</button>
+      </div>
+
+      <button id="met" class="on">Metronome</button>
+      <button id="strum" class="on">Strum sound</button>
+      <button id="countin" class="on">Count-in</button>
+
+      <div class="vol">
+        <span class="ctl-label">Vol</span>
+        <input id="vol" type="range" min="0" max="100" value="100" aria-label="Volume">
+        <span class="swing-pct" id="volPct">100%</span>
+      </div>
+      <div class="swing-block">
+        <span class="ctl-label">Swing</span>
+        <input id="swing" type="range" min="0" max="40" value="0" step="1" aria-label="Swing amount">
+        <span class="swing-pct" id="swingPct">0%</span>
+      </div>
+    </div>
+
+    <div class="row">
+      <button id="reset">Reset preset</button>
+      <button id="random">Randomize</button>
+      <div class="loop-block">
+        <button id="loopBtn">Loop</button>
+      </div>
+      <button id="focusBtn">Focus</button>
+      <button id="chordBtn">Chord trainer</button>
+    </div>
+
+    <div class="chord-panel" id="chordPanel">
+      <div class="chord-grid" id="chordGrid"></div>
+      <div class="progression-feel" id="progressionFeel"></div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <span class="ctl-label">Bars per chord</span>
+        <input class="chord-bar-inp" id="barsPerChord" type="number" min="1" max="8" value="2">
+      </div>
+      <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px">
+        <button id="chordRandom">Random progression</button>
+        <button id="chordClear">Clear progression</button>
+      </div>
+      <div class="chord-display" id="chordDisplay"></div>
+    </div>
+  </div>
+
+  <div class="status" id="status">Idle — press Play. Click any circle to toggle strum / skip.</div>
+  <div class="grid" id="grid"></div>
+</div>
+
+<script>
+(() => {
+  // ---------- config / state ----------
+  let BEATS_PER_BAR = 4;
+  let TIME_SIG = 4;
+  const LOOKAHEAD_MS = 25;        // how often the scheduler wakes
+  const SCHEDULE_AHEAD = 0.10;    // seconds of audio scheduled in advance
+
+  let spb = 4;                    // subdivisions per bar (grid resolution)
+  let bpm = 100;
+  let swing = 0;                  // 0–0.4 swing offset for offbeat 8ths
+  let loopBars = new Set();       // indices of bars in the loop
+  let loopEdit = false;            // is loop editing mode active?
+  let focusMode = false;
+  let chords = [];               // selected chord names, e.g. ['Am','F','C','G']
+  let barsPerChord = 2;          // how many bars each chord lasts
+  let chordMode = false;          // is chord trainer active?
+  let exercise = [];             // array of bars; each bar = array of 0/1
+
+  let ctx = null, master = null, noiseBuf = null;
+  let isPlaying = false, timer = null, rafId = null;
+  let phase = 'play';            // 'countin' | 'play'
+  let curBar = 0, curSlot = 0, countLeft = 0, nextNoteTime = 0;
+  const queue = [];              // visual events {time, ...}
+
+  const opts = { met:true, strum:true, countin:true, vol:1.0 };
+
+  // ---------- presets ----------
+  function preset(res){
+    if (res === 4){
+      return Array.from({length:20}, (_,i) =>
+        [ (i>>3)&1, (i>>2)&1, (i>>1)&1, i&1 ]);
+    }
+    if (res === 8){
+      return [
+        [1,1,1,1,1,1,1,1],   // all downstrokes
+        [1,0,1,0,1,0,1,0],   // on-beats only
+        [0,1,0,1,0,1,0,1],   // off-beats only
+        [1,0,1,1,0,1,1,0],   // classic rock
+        [1,1,0,1,1,0,1,0],   // driving
+        [1,0,1,1,1,0,1,1],   // syncopated strum
+        [1,1,1,0,1,1,1,0],   // heavy 1-2-4
+        [1,0,0,1,1,0,0,1],   // dotted pairs
+        [1,1,0,0,1,1,0,0],   // two-and-two
+        [1,0,0,0,1,0,0,0],   // accents only
+        [0,0,1,1,0,0,1,1],   // back-half pairs
+        [1,1,1,0,0,0,1,1],   // pull at the end
+        [0,1,1,0,0,1,1,0],   // inside accents
+        [1,0,0,1,0,0,1,0],   // sparse strum
+        [1,1,0,0,0,1,1,0],   // push-pull
+      ];
+    }
+    // 3/4 — quarter notes (3 slots)
+    if (res === 3){
+      return Array.from({length:15}, (_,i) =>
+        [ (i>>2)&1, (i>>1)&1, i&1 ]);
+    }
+    // 3/4 — eighth notes (6 slots)
+    return [
+      [1,1,1,1,1,1],
+      [1,0,1,0,1,0],
+      [0,1,0,1,0,1],
+      [1,0,1,1,0,1],
+      [1,1,0,1,0,0],
+      [1,0,0,1,0,0],
+      [1,1,0,0,1,0],
+      [0,1,1,0,0,1],
+      [1,0,0,0,1,0],
+      [1,1,1,0,0,0],
+    ];
+  }
+
+  // ---------- audio ----------
+  function initAudio(){
+    if (ctx) return;
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    master = ctx.createGain();
+    master.gain.value = opts.vol;
+    master.connect(ctx.destination);
+    // one reusable noise buffer for the strum "chk"
+    const len = Math.floor(ctx.sampleRate * 0.12);
+    noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i=0;i<len;i++) d[i] = Math.random()*2 - 1;
+  }
+
+  function click(t, accent){
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = accent ? 2000 : 1050;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(accent ? 0.55 : 0.32, t + 0.001);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+    osc.connect(g).connect(master);
+    osc.start(t); osc.stop(t + 0.06);
+  }
+
+  function strum(t){
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuf;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass'; bp.frequency.value = 1700; bp.Q.value = 0.7;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.5, t + 0.003);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+    src.connect(bp).connect(g).connect(master);
+    src.start(t); src.stop(t + 0.12);
+  }
+
+  // ---------- scheduler ----------
+  const slotsPerBeat = () => spb / BEATS_PER_BAR;
+  const secPerSlot   = () => (60 / bpm) / slotsPerBeat();
+
+  function scheduleSlot(t){
+    const isBeat  = (curSlot % slotsPerBeat()) === 0;
+    const accent  = curSlot === 0;
+    if (phase === 'countin'){
+      if (isBeat) click(t, accent);
+      queue.push({ time:t, phase:'countin', slot:curSlot, isBeat, accent });
+    } else {
+      if (opts.met && isBeat) click(t, accent);
+      if (opts.strum && exercise[curBar][curSlot]) strum(t);
+      queue.push({ time:t, phase:'play', bar:curBar, slot:curSlot, isBeat, accent });
+    }
+  }
+
+  function advance(){
+    let dt = secPerSlot();
+    if (swing > 0 && spb / BEATS_PER_BAR === 2){
+      // swing: onbeat→offbeat longer, offbeat→next onbeat shorter
+      if (curSlot % 2 === 0) dt *= (1 + swing);
+      else                   dt *= (1 - swing);
+    }
+    nextNoteTime += dt;
+    if (phase === 'countin'){
+      curSlot++; countLeft--;
+      if (countLeft <= 0){ phase = 'play'; curBar = loopBars.size ? Math.min(...loopBars) : 0; curSlot = 0; }
+    } else {
+      curSlot++;
+      if (curSlot >= spb){
+        curSlot = 0;
+        if (loopBars.size){
+          const sorted = [...loopBars].sort((a,b) => a-b);
+          const idx = sorted.indexOf(curBar);
+          curBar = sorted[(idx + 1) % sorted.length];
+        } else {
+          curBar = (curBar + 1) % exercise.length;
+        }
+      }
+    }
+  }
+
+  function scheduler(){
+    while (nextNoteTime < ctx.currentTime + SCHEDULE_AHEAD){
+      scheduleSlot(nextNoteTime);
+      advance();
+    }
+  }
+
+  // ---------- transport ----------
+  function start(){
+    initAudio();
+    if (ctx.state === 'suspended') ctx.resume();
+    isPlaying = true;
+    curBar = loopBars.size ? Math.min(...loopBars) : 0; curSlot = 0; queue.length = 0;
+    if (opts.countin){ phase = 'countin'; countLeft = spb; }
+    else phase = 'play';
+    nextNoteTime = ctx.currentTime + 0.1;
+    timer = setInterval(scheduler, LOOKAHEAD_MS);
+    rafId = requestAnimationFrame(draw);
+    if (chordMode && chords.length){
+      $('chordDisplay').classList.add('show');
+      // scroll so grid is visible — chord panel may have pushed it down
+      setTimeout(() => grid.scrollIntoView({ behavior:'smooth', block:'nearest' }), 50);
+    }
+    updateChordDisplay();
+    playBtn.textContent = 'Stop'; playBtn.classList.add('playing');
+    status.textContent = 'Playing…';
+  }
+
+  function stop(){
+    isPlaying = false;
+    clearInterval(timer); cancelAnimationFrame(rafId);
+    queue.length = 0;
+    clearHighlight();
+    grid.classList.remove('counting');
+    $('chordDisplay').classList.remove('show');
+    $('chordDisplay').textContent = '';
+    playBtn.textContent = 'Play'; playBtn.classList.remove('playing');
+    status.textContent = 'Stopped. Click any circle to toggle strum / skip.';
+  }
+
+  // ---------- beat lights ----------
+  function updateBeatLights(){
+    const container = $('beats');
+    container.innerHTML = '';
+    for (let i = 0; i < BEATS_PER_BAR; i++){
+      const el = document.createElement('div'); el.className = 'beat';
+      container.appendChild(el);
+    }
+  }
+
+  // ---------- visual sync ----------
+  let prevBox = null, prevSlot = null;
+
+  function flashBeat(i, accent){
+    const el = $('beats').children[i]; if (!el) return;
+    el.classList.add('lit'); if (accent) el.classList.add('accent');
+    setTimeout(() => el.classList.remove('lit','accent'), 110);
+  }
+  function clearHighlight(){
+    if (prevBox) prevBox.classList.remove('active-bar');
+    if (prevSlot) prevSlot.classList.remove('now');
+    prevBox = prevSlot = null;
+  }
+
+  function draw(){
+    const now = ctx.currentTime;
+    let ev = null;
+    while (queue.length && queue[0].time <= now) ev = queue.shift();
+    if (ev){
+      if (ev.isBeat) flashBeat(Math.floor(ev.slot / slotsPerBeat()), ev.accent);
+      if (ev.phase === 'countin'){
+        grid.classList.add('counting');
+        status.textContent = 'Count-in…';
+      } else {
+        grid.classList.remove('counting');
+        const chordStr = (chordMode && chords.length) ? (' · ' + chords[chordBarIndex(ev.bar)]) : '';
+        status.textContent = 'Playing — bar ' + (ev.bar + 1) + ' / ' + exercise.length + chordStr;
+        updateChordDisplay();
+        const box = grid.children[ev.bar];
+        if (prevBox && prevBox !== box) prevBox.classList.remove('active-bar');
+        box.classList.add('active-bar'); prevBox = box;
+        if (focusMode){
+          [...grid.children].forEach((b, i) => {
+            b.classList.toggle('dim', i !== ev.bar);
+          });
+        }
+        const s = box.querySelectorAll('.slot')[ev.slot];
+        if (prevSlot) prevSlot.classList.remove('now');
+        s.classList.add('now'); prevSlot = s;
+      }
+    }
+    if (isPlaying) rafId = requestAnimationFrame(draw);
+  }
+
+  // ---------- grid render ----------
+  function makeRow(slots, bi, offset){
+    const track = document.createElement('div'); track.className = 'track';
+    slots.forEach((v, ci) => {
+      const si = offset + ci;
+      const cell = document.createElement('div'); cell.className = 'cell';
+      const slot = document.createElement('div');
+      slot.className = 'slot' + (v ? ' on' : ' rest-dash');
+      slot.addEventListener('click', e => {
+        e.stopPropagation();
+        exercise[bi][si] = exercise[bi][si] ? 0 : 1;
+        slot.className = 'slot' + (exercise[bi][si] ? ' on' : ' rest-dash');
+      });
+      cell.appendChild(slot);
+      track.appendChild(cell);
+      if (ci < slots.length - 1){
+        const link = document.createElement('div'); link.className = 'link';
+        track.appendChild(link);
+      }
+    });
+    return track;
+  }
+  function renderGrid(){
+    grid.innerHTML = '';
+    exercise.forEach((bar, bi) => {
+      const box = document.createElement('div'); box.className = 'box';
+      const perRow = bar.length <= 4 ? bar.length : Math.ceil(bar.length / 2);
+      if (perRow < bar.length){
+        box.classList.add('multi-row');
+        for (let i = 0; i < bar.length; i += perRow){
+          box.appendChild(makeRow(bar.slice(i, i + perRow), bi, i));
+        }
+      } else {
+        box.appendChild(makeRow(bar, bi, 0));
+      }
+      grid.appendChild(box);
+    });
+  }
+
+  function loadPreset(){
+    exercise = preset(spb);
+    loopBars = new Set(exercise.map((_, i) => i));
+    if (loopEdit) loopEdit = false;
+    renderGrid();
+  }
+
+  // ---------- controls ----------
+  const $ = id => document.getElementById(id);
+  const grid = $('grid'), status = $('status'), playBtn = $('play');
+
+  playBtn.addEventListener('click', () => isPlaying ? stop() : start());
+
+  const bpmSlider = $('bpm'), bpmVal = $('bpmVal');
+  function setBpm(v){ bpm = Math.max(40, Math.min(240, Math.round(v)));
+    bpmSlider.value = bpm; bpmVal.textContent = bpm; }
+  bpmSlider.addEventListener('input', e => setBpm(+e.target.value));
+  $('bpmDec').addEventListener('click', () => setBpm(bpm - 1));
+  $('bpmInc').addEventListener('click', () => setBpm(bpm + 1));
+
+  // tap tempo
+  let taps = [];
+  $('tap').addEventListener('click', () => {
+    const now = performance.now();
+    taps = taps.filter(t => now - t < 2000); taps.push(now);
+    if (taps.length >= 2){
+      let sum = 0; for (let i=1;i<taps.length;i++) sum += taps[i]-taps[i-1];
+      setBpm(60000 / (sum / (taps.length - 1)));
+    }
+  });
+
+  // subdivision segmented control
+  $('subdiv').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    [...e.currentTarget.children].forEach(x => x.classList.remove('sel'));
+    b.classList.add('sel');
+    spb = +b.dataset.spb;
+    const was = isPlaying; if (was) stop();
+    loadPreset();
+  });
+
+  const toggle = (id, key) => $(id).addEventListener('click', e => {
+    opts[key] = !opts[key]; e.target.classList.toggle('on', opts[key]);
+  });
+  toggle('met','met'); toggle('strum','strum'); toggle('countin','countin');
+
+  $('vol').addEventListener('input', e => {
+    opts.vol = e.target.value / 100;
+    $('volPct').textContent = Math.round(opts.vol * 100) + '%';
+    if (master) master.gain.setTargetAtTime(opts.vol, ctx.currentTime, 0.01);
+  });
+
+  // time signature
+  const updateSubdivLabels = () => {
+    const btns = $('subdiv').children;
+    if (TIME_SIG === 4){
+      btns[0].textContent = '♩ ×4'; btns[0].dataset.spb = '4';
+      btns[1].textContent = '♪ ×8'; btns[1].dataset.spb = '8';
+    } else {
+      btns[0].textContent = '♩ ×3'; btns[0].dataset.spb = '3';
+      btns[1].textContent = '♪ ×6'; btns[1].dataset.spb = '6';
+    }
+    btns[0].classList.add('sel'); btns[1].classList.remove('sel');
+  };
+  $('timeSig').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    const sig = +b.dataset.sig;
+    if (sig === TIME_SIG) return;
+    const was = isPlaying; if (was) stop();
+    TIME_SIG = sig; BEATS_PER_BAR = sig;
+    [...e.currentTarget.children].forEach(x => x.classList.remove('sel'));
+    b.classList.add('sel');
+    updateSubdivLabels();
+    updateBeatLights();
+    spb = sig === 4 ? 4 : 3;
+    loadPreset();
+  });
+
+  // swing
+  $('swing').addEventListener('input', e => {
+    swing = e.target.value / 100;
+    $('swingPct').textContent = Math.round(swing * 100) + '%';
+  });
+
+  // loop
+  function enterLoopEdit(){
+    loopEdit = true;
+    $('loopBtn').classList.add('on');
+    grid.classList.add('loop-edit');
+    [...grid.children].forEach((box, i) => {
+      const inLoop = loopBars.has(i);
+      box.classList.toggle('loop-in', inLoop);
+      box.classList.toggle('loop-out', !inLoop);
+    });
+  }
+  function exitLoopEdit(){
+    loopEdit = false;
+    $('loopBtn').classList.remove('on');
+    grid.classList.remove('loop-edit');
+    [...grid.children].forEach(box => {
+      box.classList.remove('loop-in', 'loop-out');
+    });
+  }
+  $('loopBtn').addEventListener('click', () => {
+    if (!loopEdit){ enterLoopEdit(); }
+    else { exitLoopEdit(); }
+  });
+  // grid delegation: toggle loop membership on box click in edit mode
+  grid.addEventListener('click', e => {
+    if (!loopEdit) return;
+    const box = e.target.closest('.box');
+    if (!box) return;
+    const bi = [...grid.children].indexOf(box);
+    if (bi === -1) return;
+    if (loopBars.has(bi)) loopBars.delete(bi);
+    else loopBars.add(bi);
+    box.classList.toggle('loop-in', loopBars.has(bi));
+    box.classList.toggle('loop-out', !loopBars.has(bi));
+  });
+
+  // focus
+  $('focusBtn').addEventListener('click', e => {
+    focusMode = !focusMode;
+    e.target.classList.toggle('on', focusMode);
+    grid.classList.toggle('focus', focusMode);
+    if (!focusMode){
+      [...grid.children].forEach(b => b.classList.remove('dim'));
+    }
+  });
+
+  // ---------- chord ----------
+  const CHORDS = ['A','Am','B','Bm','C','Cm','D','Dm','E','Em','F','Fm','G','Gm'];
+  function populateChordGrid(){
+    const g = $('chordGrid'); g.innerHTML = '';
+    // selected chords first (in order), then unselected
+    const sorted = [...chords, ...CHORDS.filter(c => !chords.includes(c))];
+    sorted.forEach(name => {
+      const b = document.createElement('button'); b.textContent = name;
+      b.dataset.chord = name;
+      if (chords.includes(name)) b.classList.add('sel');
+      b.addEventListener('click', () => {
+        const idx = chords.indexOf(name);
+        if (idx === -1){ chords.push(name); }
+        else { chords.splice(idx, 1); }
+        populateChordGrid();
+        updateChordDisplay();
+      });
+      g.appendChild(b);
+    });
+  }
+  function chordBarIndex(bi){
+    if (!chords.length) return -1;
+    return Math.floor(bi / barsPerChord) % chords.length;
+  }
+  function updateChordDisplay(){
+    const el = $('chordDisplay');
+    if (isPlaying && chordMode && chords.length){
+      el.textContent = chords[chordBarIndex(curBar)];
+    }
+  }
+  $('chordBtn').addEventListener('click', e => {
+    chordMode = !chordMode;
+    e.target.classList.toggle('on', chordMode);
+    $('chordPanel').classList.toggle('open', chordMode);
+    if (!chordMode){ $('chordDisplay').classList.remove('show'); $('chordDisplay').textContent = ''; }
+  });
+  $('barsPerChord').addEventListener('input', e => {
+    barsPerChord = Math.max(1, Math.min(8, +e.target.value || 1));
+    updateChordDisplay();
+  });
+  const PROGRESSIONS = [
+    { chords:['Am','F','C','G'], feel:'Classic pop' },
+    { chords:['C','G','Am','F'], feel:'Pop staple' },
+    { chords:['G','D','Em','C'], feel:'Rock ballad' },
+    { chords:['Em','C','G','D'], feel:'Alt rock' },
+    { chords:['D','A','Bm','G'], feel:'Bright open' },
+    { chords:['A','D','E','A'], feel:'Blues I-IV-V' },
+    { chords:['C','Am','F','G'], feel:'Doo-wop' },
+    { chords:['G','C','D','G'], feel:'Folk' },
+    { chords:['G','Em','C','D'], feel:'Indie' },
+    { chords:['Am','C','G','Em'], feel:'Melancholic' },
+    { chords:['Dm','Am','C','G'], feel:'Minor pop' },
+    { chords:['E','A','B','E'], feel:'Classic rock' },
+  ];
+  $('chordRandom').addEventListener('click', () => {
+    const pick = PROGRESSIONS[Math.floor(Math.random() * PROGRESSIONS.length)];
+    chords = [...pick.chords];
+    $('progressionFeel').textContent = pick.feel;
+    populateChordGrid();
+    updateChordDisplay();
+  });
+  $('chordClear').addEventListener('click', () => {
+    chords = [];
+    $('progressionFeel').textContent = '';
+    populateChordGrid();
+    updateChordDisplay();
+  });
+  populateChordGrid();
+
+  $('reset').addEventListener('click', loadPreset);
+  $('random').addEventListener('click', () => {
+    exercise = exercise.map(bar => bar.map(() => Math.random() < 0.5 ? 1 : 0)); renderGrid();
+  });
+
+  // spacebar = play/stop
+  document.addEventListener('keydown', e => {
+    if (e.code === 'Space' && e.target.tagName !== 'BUTTON' && e.target.tagName !== 'INPUT'){
+      e.preventDefault(); isPlaying ? stop() : start();
+    }
+  });
+
+  // ---------- boot ----------
+  setBpm(100);
+  updateBeatLights();
+  loadPreset();
+})();
+</script>
+</body>
+</html>
