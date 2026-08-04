@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Rhythm Trainer</title>
+<title>Strumline</title>
 <style>
   :root{
     --bg:#0a0c0b;
@@ -132,6 +132,7 @@
   .box.active-bar{border-color:var(--active-edge);box-shadow:0 0 0 1px var(--active-edge),0 0 22px #efece21f}
   .grid.focus .box.dim{opacity:.18;pointer-events:none}
   .grid.focus .box.active-bar{opacity:1;pointer-events:auto}
+  .grid.focus .box.next-bar{border-color:#2c6b45;box-shadow:0 0 0 1px #2c6b4533}
 
   .loop-block{display:flex;align-items:center;gap:6px}
   .grid.loop-edit .box{cursor:pointer}
@@ -195,7 +196,7 @@
 <body>
 <div class="wrap">
   <header>
-    <h1>Rhythm&nbsp;Trainer</h1>
+    <h1>Strumline</h1>
     <div class="sig">STRUM = LIT &nbsp;·&nbsp; DASH = SKIP</div>
   </header>
 
@@ -412,15 +413,19 @@
       curSlot++;
       if (curSlot >= spb){
         curSlot = 0;
-        if (loopBars.size){
-          const sorted = [...loopBars].sort((a,b) => a-b);
-          const idx = sorted.indexOf(curBar);
-          curBar = sorted[(idx + 1) % sorted.length];
-        } else {
-          curBar = (curBar + 1) % exercise.length;
-        }
+        curBar = nextBarIndex(curBar);
       }
     }
+  }
+
+  // next bar index, following the same loop rules as advance()
+  function nextBarIndex(bi){
+    if (loopBars.size){
+      const sorted = [...loopBars].sort((a,b) => a-b);
+      const idx = sorted.indexOf(bi);
+      return sorted[(idx + 1) % sorted.length];
+    }
+    return (bi + 1) % exercise.length;
   }
 
   function scheduler(){
@@ -505,8 +510,10 @@
         if (prevBox && prevBox !== box) prevBox.classList.remove('active-bar');
         box.classList.add('active-bar'); prevBox = box;
         if (focusMode){
+          const next = nextBarIndex(ev.bar);
           [...grid.children].forEach((b, i) => {
-            b.classList.toggle('dim', i !== ev.bar);
+            b.classList.toggle('dim', i !== ev.bar && i !== next);
+            b.classList.toggle('next-bar', i === next);
           });
         }
         const s = box.querySelectorAll('.slot')[ev.slot];
@@ -682,7 +689,7 @@
     e.target.classList.toggle('on', focusMode);
     grid.classList.toggle('focus', focusMode);
     if (!focusMode){
-      [...grid.children].forEach(b => b.classList.remove('dim'));
+      [...grid.children].forEach(b => b.classList.remove('dim','next-bar'));
     }
   });
 
