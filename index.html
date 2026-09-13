@@ -191,13 +191,37 @@
   @media (prefers-reduced-motion:reduce){
     .slot,.beat,.box{transition:none}
   }
+
+  /* bass mode */
+  #bassPanel{display:none;margin-top:14px}
+  body.bass #bassPanel{display:flex}
+  .bass-select{font-family:var(--mono);font-size:13px;color:var(--text);background:var(--panel-2);
+    border:1px solid var(--edge);border-radius:7px;padding:7px 8px}
+  .bass-select:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+  .slot.bass-slot{width:auto;min-width:24px;height:24px;border-radius:7px;display:flex;
+    align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;
+    line-height:1;color:var(--text)}
+  .slot.bass-slot.rest-dash{width:24px;height:24px;border-radius:50%;
+    background:transparent;border:1px dashed var(--edge)}
+  .slot.bass-slot.rest-dash.now{background:#5a6560;border-color:#5a6560}
+  .slot.bass-slot.held{background:var(--dim-green);border-radius:3px;color:transparent}
+  .link.bass-link{cursor:pointer}
+  .link.bass-link:hover{background:var(--amber);opacity:.9}
+  .bass-legend{flex-basis:100%;font-family:var(--mono);font-size:12px;color:var(--muted);letter-spacing:.08em}
+  .bass-legend b{color:var(--amber);font-weight:600}
+  .bass-select:disabled{opacity:.5;cursor:not-allowed}
+  .seg button:disabled{opacity:.45;cursor:not-allowed}
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
     <h1>Strumline</h1>
-    <div class="sig">STRUM = LIT &nbsp;·&nbsp; DASH = SKIP</div>
+    <div class="seg" id="instrument" role="group" aria-label="Instrument">
+      <button data-inst="guitar" class="sel">Guitar</button>
+      <button data-inst="bass">Bass</button>
+    </div>
+    <div class="sig" id="sig">STRUM = LIT &nbsp;·&nbsp; DASH = SKIP</div>
   </header>
 
   <div class="console">
@@ -264,6 +288,25 @@
       </div>
       <div class="chord-display" id="chordDisplay"></div>
     </div>
+    <div class="row" id="bassPanel">
+      <span class="ctl-label">Key</span>
+      <select class="bass-select" id="bassRoot" aria-label="Bass root key">
+        <option>E</option><option>A</option><option>D</option><option>G</option>
+        <option>C</option><option>F</option><option>B</option>
+      </select>
+      <div class="seg" id="bassScale" role="group" aria-label="Scale">
+        <button data-scale="major" class="sel">Major</button>
+        <button data-scale="minor">Minor</button>
+      </div>
+      <span class="ctl-label">Articulation</span>
+      <div class="seg" id="artic">
+        <button data-art="staccato">Staccato</button>
+        <button data-art="normal" class="sel">Normal</button>
+        <button data-art="legato">Legato</button>
+      </div>
+      <button id="drums" class="on">Drums</button>
+      <span class="bass-legend" id="bassLegend"></span>
+    </div>
   </div>
 
   <div class="status" id="status" role="status">Idle — press Play. Click any circle to toggle strum / skip.</div>
@@ -288,6 +331,12 @@
   let barsPerChord = 2;          // how many bars each chord lasts
   let chordMode = false;          // is chord trainer active?
   let exercise = [];             // array of bars; each bar = array of 0/1
+  let instrument = 'guitar';      // 'guitar' | 'bass'
+  let bassExercise = [];          // bass bars; each bar = array of null | {deg,dur}
+  let articulation = 'normal';    // 'staccato' | 'normal' | 'legato'
+  let bassRootLetter = 'E';       // fallback root when no chord progression
+  let guitarMetPref = true;       // remembered metronome state while in bass mode
+  let bassScale = 'major';        // 'major' | 'minor' — governs the 3rd
 
   let ctx = null, master = null, noiseBuf = null;
   let isPlaying = false, timer = null, rafId = null;
@@ -295,7 +344,7 @@
   let curBar = 0, curSlot = 0, countLeft = 0, nextNoteTime = 0;
   const queue = [];              // visual events {time, ...}
 
-  const opts = { met:true, strum:true, countin:true, vol:1.0 };
+  const opts = { met:true, strum:true, countin:true, drums:true, vol:1.0 };
 
   // ---------- presets ----------
   function preset(res){
@@ -342,6 +391,60 @@
     ];
   }
 
+  // ---------- bass presets ----------
+  const bn = (deg, dur) => ({ deg: deg, dur: dur || 1 });
+  function bassPreset(res){
+    if (res === 4) return [
+      [bn(0), null, bn(0), null],                 // roots on 1 & 3
+      [bn(0), bn(0), bn(0), bn(0)],               // four on the floor
+      [bn(0), null, bn(1), null],                 // root–fifth
+      [bn(0), bn(1), bn(2), null],                // root–fifth–octave
+      [bn(0), null, null, bn(2)],                 // sparse octave
+      [bn(0, 4), null, null, null],               // held whole bar
+      [bn(0), null, bn(1), bn(2)],                // climbing run
+      [bn(0), bn(1), bn(0), bn(1)],               // alternating root–fifth
+      [bn(0, 2), null, bn(1, 2), null],           // half notes
+      [bn(0), null, bn(2), bn(1)],                // bounce
+    ];
+    if (res === 8) return [
+      [bn(0), null, bn(0), null, bn(1), null, bn(1), null],
+      [bn(0), null, bn(2), null, bn(0), null, bn(2), null],
+      [bn(0), null, null, bn(0), null, bn(0), null, null],
+      [bn(0), null, bn(0), bn(0), null, bn(1), null, bn(1)],
+      [bn(0, 2), null, null, null, bn(1, 2), null, null, null],
+      [bn(0), bn(0), null, bn(1), bn(1), null, bn(2), null],
+      [bn(0, 8), null, null, null, null, null, null, null],
+      [bn(0), null, bn(1), null, bn(2), null, bn(1), null],
+      [bn(0), bn(0), bn(0), bn(0), bn(0), bn(0), bn(0), bn(0)],
+      [bn(0), null, null, bn(1), null, null, bn(2), null],
+    ];
+    if (res === 3) return [
+      [bn(0), null, null],
+      [bn(0), bn(0), bn(0)],
+      [bn(0), null, bn(1)],
+      [bn(0), bn(1), bn(2)],
+      [bn(0, 3), null, null],
+      [bn(0), bn(1), bn(0)],
+      [bn(2), null, bn(0)],
+      [bn(0), null, bn(2)],
+      [bn(0), bn(0), bn(1)],
+      [bn(1), null, bn(1)],
+    ];
+    // res === 6 (3/4 eighths)
+    return [
+      [bn(0), null, bn(0), null, bn(1), null],
+      [bn(0), null, bn(2), null, bn(1), null],
+      [bn(0), bn(0), null, bn(1), bn(1), null],
+      [bn(0), null, null, bn(0), null, bn(1)],
+      [bn(0), bn(0), null, bn(2), bn(1), null],
+      [bn(0, 6), null, null, null, null, null],
+      [bn(0), null, bn(0), bn(0), null, bn(0)],
+      [bn(0), bn(1), null, bn(1), null, bn(2)],
+      [bn(0), null, null, bn(1), null, null],
+      [bn(0), bn(0), bn(0), bn(0), bn(0), bn(0)],
+    ];
+  }
+
   // ---------- audio ----------
   function initAudio(){
     if (ctx) return;
@@ -381,6 +484,78 @@
     src.start(t); src.stop(t + 0.12);
   }
 
+  function bassNote(t, freq, durSec){
+    if (!ctx) return;
+    const osc = ctx.createOscillator();
+    const sub = ctx.createOscillator();
+    const filt = ctx.createBiquadFilter();
+    const g = ctx.createGain();
+    const subGain = ctx.createGain();
+    const rel = Math.max(0.08, Math.min(0.5, durSec * 0.5));
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(freq, t);
+    sub.type = 'sine';
+    sub.frequency.setValueAtTime(freq / 2, t);
+    subGain.gain.value = 0.6;
+    filt.type = 'lowpass';
+    filt.Q.value = 2.5;
+    filt.frequency.setValueAtTime(Math.min(3200, Math.max(500, freq * 10)), t);
+    filt.frequency.exponentialRampToValueAtTime(Math.max(160, freq * 2), t + Math.max(0.06, durSec));
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.4, t + 0.006);
+    g.gain.setValueAtTime(0.4, t + 0.006 + durSec);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.006 + durSec + rel);
+    sub.connect(subGain).connect(filt);
+    osc.connect(filt).connect(g).connect(master);
+    const stopAt = t + 0.006 + durSec + rel + 0.05;
+    sub.start(t); sub.stop(stopAt);
+    osc.start(t); osc.stop(stopAt);
+  }
+
+  function kick(t){
+    const osc = ctx.createOscillator(); const g = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(150, t);
+    osc.frequency.exponentialRampToValueAtTime(45, t + 0.09);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.6, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.28);
+    osc.connect(g).connect(master);
+    osc.start(t); osc.stop(t + 0.3);
+  }
+
+  function snare(t){
+    const src = ctx.createBufferSource(); src.buffer = noiseBuf;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass'; bp.frequency.value = 1800; bp.Q.value = 0.8;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.32, t + 0.003);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.15);
+    src.connect(bp).connect(g).connect(master);
+    src.start(t); src.stop(t + 0.2);
+  }
+
+  function hat(t){
+    const src = ctx.createBufferSource(); src.buffer = noiseBuf;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass'; hp.frequency.value = 7000;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.1, t + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+    src.connect(hp).connect(g).connect(master);
+    src.start(t); src.stop(t + 0.08);
+  }
+
+  function scheduleDrums(t, slot, isBeat){
+    const beat = Math.floor(slot / slotsPerBeat());
+    const four = BEATS_PER_BAR === 4;
+    if (isBeat && (beat === 0 || (four && beat === 2))) kick(t);
+    if (isBeat && (beat === 1 || (four && beat === 3))) snare(t);
+    if (spb >= 8 || isBeat) hat(t);
+  }
+
   // ---------- scheduler ----------
   const slotsPerBeat = () => spb / BEATS_PER_BAR;
   const secPerSlot   = () => (60 / bpm) / slotsPerBeat();
@@ -393,7 +568,13 @@
       queue.push({ time:t, phase:'countin', slot:curSlot, isBeat, accent });
     } else {
       if (opts.met && isBeat) click(t, accent);
-      if (opts.strum && exercise[curBar][curSlot]) strum(t);
+      if (instrument === 'bass'){
+        if (opts.drums) scheduleDrums(t, curSlot, isBeat);
+        const hit = opts.strum ? bassNoteAt(curBar, curSlot) : null;
+        if (hit) bassNote(t, hit.freq, hit.durSec);
+      } else if (opts.strum && exercise[curBar][curSlot]){
+        strum(t);
+      }
       queue.push({ time:t, phase:'play', bar:curBar, slot:curSlot, isBeat, accent });
     }
   }
@@ -425,7 +606,7 @@
       const idx = sorted.indexOf(bi);
       return sorted[(idx + 1) % sorted.length];
     }
-    return (bi + 1) % exercise.length;
+    return (bi + 1) % activeExercise().length;
   }
 
   function scheduler(){
@@ -446,7 +627,7 @@
     nextNoteTime = ctx.currentTime + 0.1;
     timer = setInterval(scheduler, LOOKAHEAD_MS);
     rafId = requestAnimationFrame(draw);
-    if (chordMode && chords.length){
+    if ((chordMode && chords.length) || instrument === 'bass'){
       $('chordDisplay').classList.add('show');
       // scroll so grid is visible — chord panel may have pushed it down
       setTimeout(() => grid.scrollIntoView({ behavior:'smooth', block:'nearest' }), 50);
@@ -465,7 +646,11 @@
     $('chordDisplay').classList.remove('show');
     $('chordDisplay').textContent = '';
     playBtn.textContent = 'Play'; playBtn.classList.remove('playing');
-    status.textContent = 'Stopped. Click any circle to toggle strum / skip.';
+    status.textContent = instrument === 'bass'
+      ? 'Stopped. Click a dot to cycle R/5/8/3 · click a link to sustain.'
+      : 'Stopped. Click any circle to toggle strum / skip.';
+    refreshBassLegend();
+    syncBassControls();
   }
 
   // ---------- beat lights ----------
@@ -503,9 +688,12 @@
         status.textContent = 'Count-in…';
       } else {
         grid.classList.remove('counting');
-        const chordStr = (chordMode && chords.length) ? (' · ' + chords[chordBarIndex(ev.bar)]) : '';
-        status.textContent = 'Playing — bar ' + (ev.bar + 1) + ' / ' + exercise.length + chordStr;
+        const chordStr = (instrument === 'bass')
+          ? (' · ' + bassDisplayFor(ev.bar))
+          : ((chordMode && chords.length) ? (' · ' + chords[chordBarIndex(ev.bar)]) : '');
+        status.textContent = 'Playing — bar ' + (ev.bar + 1) + ' / ' + activeExercise().length + chordStr;
         updateChordDisplay();
+        if (instrument === 'bass'){ updateBassLegend(ev.bar); syncBassControls(ev.bar); }
         const box = grid.children[ev.bar];
         if (prevBox && prevBox !== box) prevBox.classList.remove('active-bar');
         box.classList.add('active-bar'); prevBox = box;
@@ -565,6 +753,7 @@
   function renderGrid(){
     grid.innerHTML = '';
     prevBox = prevSlot = null;   // re-render replaces nodes; drop stale highlight refs
+    if (instrument === 'bass'){ renderBassGrid(); return; }
     exercise.forEach((bar, bi) => {
       const box = document.createElement('div'); box.className = 'box';
       const perRow = bar.length <= 4 ? bar.length : Math.ceil(bar.length / 2);
@@ -581,8 +770,9 @@
   }
 
   function loadPreset(){
-    exercise = preset(spb);
-    loopBars = new Set(exercise.map((_, i) => i));
+    const src = instrument === 'bass' ? bassPreset(spb) : preset(spb);
+    if (instrument === 'bass') bassExercise = src; else exercise = src;
+    loopBars = new Set(src.map((_, i) => i));
     if (loopEdit) loopEdit = false;
     renderGrid();
   }
@@ -624,7 +814,7 @@
   const toggle = (id, key) => $(id).addEventListener('click', e => {
     opts[key] = !opts[key]; e.target.classList.toggle('on', opts[key]);
   });
-  toggle('met','met'); toggle('strum','strum'); toggle('countin','countin');
+  toggle('met','met'); toggle('strum','strum'); toggle('countin','countin'); toggle('drums','drums');
 
   $('vol').addEventListener('input', e => {
     opts.vol = e.target.value / 100;
@@ -726,6 +916,7 @@
         else { chords.splice(idx, 1); }
         populateChordGrid();
         updateChordDisplay();
+        refreshBass();
       });
       g.appendChild(b);
     });
@@ -736,7 +927,10 @@
   }
   function updateChordDisplay(){
     const el = $('chordDisplay');
-    if (isPlaying && chordMode && chords.length){
+    if (!isPlaying) return;
+    if (instrument === 'bass'){
+      el.textContent = bassDisplayFor(curBar);
+    } else if (chordMode && chords.length){
       el.textContent = chords[chordBarIndex(curBar)];
     }
   }
@@ -745,10 +939,12 @@
     e.target.classList.toggle('on', chordMode);
     $('chordPanel').classList.toggle('open', chordMode);
     if (!chordMode){ $('chordDisplay').classList.remove('show'); $('chordDisplay').textContent = ''; }
+    refreshBass();
   });
   $('barsPerChord').addEventListener('input', e => {
     barsPerChord = Math.max(1, Math.min(8, +e.target.value || 1));
     updateChordDisplay();
+    refreshBass();
   });
   const PROGRESSIONS = [
     { chords:['Am','F','C','G'], feel:'Classic pop' },
@@ -770,26 +966,240 @@
     $('progressionFeel').textContent = pick.feel;
     populateChordGrid();
     updateChordDisplay();
+    refreshBass();
   });
   $('chordClear').addEventListener('click', () => {
     chords = [];
     $('progressionFeel').textContent = '';
     populateChordGrid();
     updateChordDisplay();
+    refreshBass();
   });
   populateChordGrid();
 
   $('reset').addEventListener('click', loadPreset);
   $('random').addEventListener('click', () => {
-    exercise = exercise.map(bar => bar.map(() => Math.random() < 0.5 ? 1 : 0)); renderGrid();
+    if (instrument === 'bass'){
+      bassExercise = bassExercise.map(bar => bar.map(() =>
+        Math.random() < 0.45 ? { deg: Math.floor(Math.random() * 4), dur: 1 } : null));
+    } else {
+      exercise = exercise.map(bar => bar.map(() => Math.random() < 0.5 ? 1 : 0));
+    }
+    renderGrid();
   });
 
   // spacebar = play/stop
   document.addEventListener('keydown', e => {
-    if (e.code === 'Space' && e.target.tagName !== 'BUTTON' && e.target.tagName !== 'INPUT'){
+    if (e.code === 'Space' && !['BUTTON','INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)){
       e.preventDefault(); isPlaying ? stop() : start();
     }
   });
+
+  // ---------- bass mode ----------
+  const BASS_ROOT_SEMI = { C:0, D:2, E:4, F:5, G:7, A:9, B:11 };
+  const BASS_DEG_LABELS = ['R','5','8','3'];
+  const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+  const midiToFreq = m => 440 * Math.pow(2, (m - 69) / 12);
+  function degSemitone(deg, minor){
+    if (deg === 3) return minor ? 3 : 4;
+    return [0, 7, 12][deg];
+  }
+  const chordIsMinor = name => !!name && name.charAt(name.length - 1) === 'm';
+  // effective key for a bar: chord root+quality when a progression is active, else Key/Scale
+  function bassKeyForBar(bi){
+    if (chords.length && chordMode){
+      const nm = chords[chordBarIndex(bi)];
+      if (nm) return { midi: 24 + (BASS_ROOT_SEMI[nm.charAt(0)] || 0), minor: chordIsMinor(nm) };
+    }
+    return { midi: 24 + (BASS_ROOT_SEMI[bassRootLetter] || 0), minor: bassScale === 'minor' };
+  }
+  function degLabel(deg, minor){ return (deg === 3 && minor) ? '♭3' : BASS_DEG_LABELS[deg]; }
+  function noteNameFor(rootMidi, deg, minor){
+    const m = rootMidi + degSemitone(deg, minor);
+    return NOTE_NAMES[((m % 12) + 12) % 12];
+  }
+  function bassDisplayFor(bi){
+    return NOTE_NAMES[((bassKeyForBar(bi).midi % 12) + 12) % 12];
+  }
+  function updateBassLegend(bi){
+    const el = $('bassLegend'); if (!el) return;
+    const key = bassKeyForBar(bi);
+    const rootName = NOTE_NAMES[((key.midi % 12) + 12) % 12];
+    const t = deg => noteNameFor(key.midi, deg, key.minor);
+    el.innerHTML = rootName + ' ' + (key.minor ? 'minor' : 'major')
+      + ' · R <b>' + t(0) + '</b>'
+      + ' · ' + (key.minor ? '♭3' : '3') + ' <b>' + t(3) + '</b>'
+      + ' · 5 <b>' + t(1) + '</b>'
+      + ' · 8 <b>' + t(2) + '</b>';
+  }
+  function refreshBassLegend(){ updateBassLegend(isPlaying ? curBar : 0); }
+  function refreshBass(){ if (instrument === 'bass') renderGrid(); refreshBassLegend(); syncBassControls(); }
+  function syncBassControls(bi){
+    const idx = (bi === undefined) ? (isPlaying ? curBar : 0) : bi;
+    const driven = !!(chordMode && chords.length);
+    const key = bassKeyForBar(idx);
+    const rootName = NOTE_NAMES[((key.midi % 12) + 12) % 12];
+    const sel = $('bassRoot');
+    if (sel){
+      if ([...sel.options].some(o => o.value === rootName)) sel.value = rootName;
+      sel.disabled = driven;
+      sel.title = driven ? 'Following the chord progression' : '';
+    }
+    const segB = $('bassScale');
+    if (segB){
+      const scale = key.minor ? 'minor' : 'major';
+      [...segB.children].forEach(b => {
+        b.classList.toggle('sel', b.dataset.scale === scale);
+        b.disabled = driven;
+      });
+      segB.title = driven ? 'Following the chord progression' : '';
+    }
+  }
+  function bassNoteAt(bi, si){
+    const bar = bassExercise[bi];
+    const note = bar && bar[si];
+    if (!note || typeof note !== 'object') return null;
+    const key = bassKeyForBar(bi);
+    const midi = key.midi + degSemitone(note.deg, key.minor);
+    const secPer = secPerSlot();
+    let durSec = (note.dur || 1) * secPer;
+    if (articulation === 'staccato') durSec *= 0.5;
+    else if (articulation === 'legato') durSec = Math.min(durSec * 1.08, durSec + secPer * 0.5);
+    return { freq: midiToFreq(midi), durSec: durSec };
+  }
+  function activeExercise(){ return instrument === 'bass' ? bassExercise : exercise; }
+
+  function bassOwner(bar, si){
+    for (let i = si; i >= 0; i--){
+      const el = bar[i];
+      if (el && typeof el === 'object') return (i + (el.dur || 1) > si) ? i : -1;
+    }
+    return -1;
+  }
+  function renderBassGrid(){
+    bassExercise.forEach((bar, bi) => {
+      const box = document.createElement('div'); box.className = 'box';
+      const perRow = bar.length <= 4 ? bar.length : Math.ceil(bar.length / 2);
+      if (perRow < bar.length){
+        box.classList.add('multi-row');
+        for (let i = 0; i < bar.length; i += perRow){
+          box.appendChild(makeBassRow(bar, bi, i, perRow));
+        }
+      } else {
+        box.appendChild(makeBassRow(bar, bi, 0, bar.length));
+      }
+      grid.appendChild(box);
+    });
+  }
+  function makeBassRow(bar, bi, from, count){
+    const track = document.createElement('div'); track.className = 'track';
+    const minor = bassKeyForBar(bi).minor;
+    for (let ci = 0; ci < count; ci++){
+      const si = from + ci;
+      const cell = document.createElement('div'); cell.className = 'cell';
+      const slot = document.createElement('div');
+      const owner = bassOwner(bar, si);
+      slot.className = 'slot bass-slot';
+      slot.setAttribute('role', 'button');
+      slot.setAttribute('tabindex', '0');
+      if (owner === si){
+        const note = bar[si];
+        slot.classList.add('on');
+        slot.textContent = degLabel(note.deg, minor);
+        slot.setAttribute('aria-label', 'Bar ' + (bi + 1) + ', slot ' + (si + 1) + ', ' + degLabel(note.deg, minor));
+      } else if (owner >= 0){
+        slot.classList.add('held');
+        slot.setAttribute('aria-label', 'Bar ' + (bi + 1) + ', slot ' + (si + 1) + ', held');
+      } else {
+        slot.classList.add('rest-dash');
+        slot.setAttribute('aria-label', 'Bar ' + (bi + 1) + ', slot ' + (si + 1) + ', rest');
+      }
+      slot.addEventListener('click', e => { e.stopPropagation(); cycleBassSlot(bi, si); });
+      slot.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar'){
+          e.preventDefault(); e.stopPropagation(); cycleBassSlot(bi, si);
+        }
+      });
+      cell.appendChild(slot);
+      track.appendChild(cell);
+      if (ci < count - 1){
+        const link = document.createElement('div'); link.className = 'link bass-link';
+        link.setAttribute('aria-hidden', 'true');
+        link.addEventListener('click', e => { e.stopPropagation(); extendBassNote(bi, si); });
+        track.appendChild(link);
+      }
+    }
+    return track;
+  }
+  function cycleBassSlot(bi, si){
+    const bar = bassExercise[bi];
+    const owner = bassOwner(bar, si);
+    if (owner === si){
+      const note = bar[si];
+      note.deg = (note.deg + 1) % (BASS_DEG_LABELS.length + 1);
+      if (note.deg >= BASS_DEG_LABELS.length) bar[si] = null;
+    } else if (owner >= 0){
+      bar[owner].dur = Math.max(1, si - owner);
+    } else {
+      bar[si] = { deg: 0, dur: 1 };
+    }
+    renderGrid();
+  }
+  function extendBassNote(bi, si){
+    const bar = bassExercise[bi];
+    if (si < 0 || si + 1 >= bar.length) return;
+    const owner = bassOwner(bar, si);
+    if (owner < 0) return;
+    if (bar[si + 1] !== null) return;
+    bar[owner].dur = (bar[owner].dur || 1) + 1;
+    renderGrid();
+  }
+  function setInstrument(inst){
+    if (inst === instrument) return;
+    if (isPlaying) stop();
+    instrument = inst;
+    document.body.classList.toggle('bass', instrument === 'bass');
+    const seg = $('instrument');
+    [...seg.children].forEach(b => b.classList.toggle('sel', b.dataset.inst === instrument));
+    $('strum').textContent = instrument === 'bass' ? 'Bass note' : 'Strum sound';
+    $('sig').innerHTML = instrument === 'bass'
+      ? 'DOT = NOTE &nbsp;·&nbsp; DASH = REST'
+      : 'STRUM = LIT &nbsp;·&nbsp; DASH = SKIP';
+    if (instrument === 'bass'){
+      guitarMetPref = opts.met;
+      opts.met = false;
+    } else {
+      opts.met = guitarMetPref;
+    }
+    $('met').classList.toggle('on', opts.met);
+    if (!isPlaying){
+      status.textContent = instrument === 'bass'
+        ? 'Bass ready. Click a dot to cycle R/5/8/3 · click a link to sustain.'
+        : 'Idle — press Play. Click any circle to toggle strum / skip.';
+    }
+    $('chordDisplay').classList.remove('show');
+    $('chordDisplay').textContent = '';
+    loadPreset();
+    refreshBassLegend();
+    syncBassControls();
+  }
+  $('instrument').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    setInstrument(b.dataset.inst);
+  });
+  $('artic').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    articulation = b.dataset.art;
+    [...e.currentTarget.children].forEach(x => x.classList.toggle('sel', x === b));
+  });
+  $('bassScale').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    bassScale = b.dataset.scale;
+    [...e.currentTarget.children].forEach(x => x.classList.toggle('sel', x === b));
+    refreshBassLegend();
+    renderGrid();
+  });
+  $('bassRoot').addEventListener('change', e => { bassRootLetter = e.target.value; refreshBassLegend(); });
 
   // ---------- boot ----------
   setBpm(100);
