@@ -13,8 +13,8 @@ Use the **Guitar / Bass** toggle in the header to switch instruments.
 **Shared**
 
 - Metronome with lookahead-scheduled Web Audio timing
-- BPM control (40–240): slider, ±1 buttons, and tap tempo
-- Time signatures 4/4 and 3/4, quarter- and eighth-note subdivisions
+- BPM control (40–240): slider, ±1 buttons, and tap tempo - remembered separately per instrument
+- Time signatures 4/4 and 3/4, with quarter-, eighth-, and sixteenth-note subdivisions
 - Swing, volume, count-in, and playback toggles
 - Loop editing and Focus mode
 - Chord trainer with random progressions
@@ -23,7 +23,7 @@ Use the **Guitar / Bass** toggle in the header to switch instruments.
 
 - Strum/skip grid: click any circle to toggle strum (lit) or skip (dash)
 - Percussive strum "chk"
-- Pattern presets
+- Pattern presets for every subdivision
 
 **Bass**
 
@@ -42,6 +42,10 @@ The progression drives the bass line's root and quality per bar - a minor
 chord gets a ♭3 - and `Bars per chord` controls how long each lasts. 
 While a progression is playing, the Key and Major/Minor controls follow the active chord.
 
-## Status
+## Presets
 
-Hobby project, developed for personal practice.
+The **My presets** row saves the current grid as a named preset in your browser's
+local storage - one set per instrument, each remembering its own time signature
+and subdivision. Pick one from the list and press **Load**, or **Delete** to
+remove it. Tempo is remembered per instrument too, so switching between guitar
+and bass keeps each one's BPM.
